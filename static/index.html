@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spam Detector</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#e2e8f0; --muted:#94a3b8;
+          --accent:#6366f1; --spam:#ef4444; --ham:#22c55e; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(circle at top,#1e1b4b,var(--bg) 55%);
+         color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         display:flex; justify-content:center; padding:32px 16px; }
+  .wrap { width:100%; max-width:720px; }
+  h1 { margin:0 0 6px; font-size:2rem; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; }
+  textarea { width:100%; min-height:180px; resize:vertical; background:#0b1222; color:var(--text);
+             border:1px solid var(--border); border-radius:12px; padding:14px; font:inherit; outline:none; }
+  textarea:focus { border-color:var(--accent); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px; }
+  button { cursor:pointer; border:0; border-radius:10px; font:inherit; font-weight:600; }
+  .primary { background:var(--accent); color:#fff; padding:11px 22px; }
+  .primary:disabled { opacity:.6; cursor:wait; }
+  .ghost { background:transparent; border:1px solid var(--border); color:var(--muted); padding:8px 12px; font-weight:500; font-size:.85rem; }
+  .ghost:hover { color:var(--text); border-color:var(--muted); }
+  .count { margin-left:auto; color:var(--muted); font-size:.85rem; }
+  #result { margin-top:20px; display:none; }
+  .badge { display:inline-block; padding:6px 14px; border-radius:999px; font-weight:700; letter-spacing:.04em; }
+  .badge.spam { background:rgba(239,68,68,.15); color:var(--spam); }
+  .badge.ham { background:rgba(34,197,94,.15); color:var(--ham); }
+  .bar { height:12px; border-radius:999px; background:#0b1222; overflow:hidden; margin:14px 0 6px; }
+  .fill { height:100%; width:0; transition:width .6s ease; }
+  .pct { color:var(--muted); font-size:.9rem; }
+  .signals { margin-top:14px; }
+  .signals span.chip { display:inline-block; margin:4px 6px 0 0; padding:4px 10px; border-radius:8px;
+                       background:rgba(239,68,68,.12); color:#fca5a5; font-size:.85rem; }
+  .note { color:var(--muted); font-size:.8rem; margin-top:18px; line-height:1.5; }
+  .err { color:var(--spam); margin-top:14px; display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛡️ Spam Detector</h1>
+  <p class="sub">Paste an SMS or email text and find out if it looks like spam.</p>
+
+  <div class="card">
+    <textarea id="text" placeholder="Paste your message or email here..."></textarea>
+    <div class="row">
+      <button class="primary" id="go">Check message</button>
+      <button class="ghost" data-ex="spam">Try spam example</button>
+      <button class="ghost" data-ex="ham">Try normal example</button>
+      <button class="ghost" id="clear">Clear</button>
+      <span class="count" id="count">0 characters</span>
+    </div>
+    <div class="err" id="err"></div>
+
+    <div id="result">
+      <span class="badge" id="badge"></span>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+      <div class="pct" id="pct"></div>
+      <div class="signals" id="signals"></div>
+    </div>
+  </div>
+
+  <p class="note">The model is trained on the SMS Spam Collection dataset (TF-IDF + Naive Bayes / Logistic Regression),
+  so it works best on short messages. Long emails may be less accurate. This is a learning project, not a
+  replacement for your mail provider's spam filter. Messages are not stored.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const examples = {
+  spam: "WINNER!! You have been selected to receive a free £900 prize. Call 09061701461 now or click http://claim-prize.example to claim. Offer ends today!",
+  ham: "Hey, are we still meeting at 6 for dinner? Let me know if you need me to pick up anything on the way."
+};
+$("text").addEventListener("input", () => $("count").textContent = $("text").value.length + " characters");
+document.querySelectorAll("[data-ex]").forEach(b => b.onclick = () => {
+  $("text").value = examples[b.dataset.ex]; $("text").dispatchEvent(new Event("input"));
+});
+$("clear").onclick = () => { $("text").value = ""; $("text").dispatchEvent(new Event("input"));
+  $("result").style.display = "none"; $("err").style.display = "none"; };
+
+$("go").onclick = async () => {
+  const text = $("text").value.trim();
+  $("err").style.display = "none";
+  if (!text) { $("err").textContent = "Please paste a message first."; $("err").style.display = "block"; return; }
+  $("go").disabled = true; $("go").textContent = "Checking...";
+  try {
+    const r = await fetch("/predict", { method:"POST", headers:{ "Content-Type":"application/json" },
+                                        body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error((await r.json()).detail || "Request failed");
+    const d = await r.json();
+    const isSpam = d.label === "spam", p = d.spam_probability * 100;
+    $("badge").textContent = isSpam ? "⚠️ SPAM" : "✅ NOT SPAM";
+    $("badge").className = "badge " + (isSpam ? "spam" : "ham");
+    $("fill").style.background = isSpam ? "var(--spam)" : "var(--ham)";
+    $("fill").style.width = p.toFixed(1) + "%";
+    $("pct").textContent = "Spam probability: " + p.toFixed(1) + "%";
+    $("signals").innerHTML = d.spam_signals.length
+      ? "Words that raised the spam score:<br>" + d.spam_signals.map(w => `<span class="chip"></span>`).join("")
+      : "";
+    document.querySelectorAll(".chip").forEach((c, i) => c.textContent = d.spam_signals[i]);
+    $("result").style.display = "block";
+  } catch (e) {
+    $("err").textContent = "Error: " + e.message; $("err").style.display = "block";
+  } finally {
+    $("go").disabled = false; $("go").textContent = "Check message";
+  }
+};
+</script>
+</body>
+</html>
