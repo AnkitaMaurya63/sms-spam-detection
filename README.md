@@ -17,8 +17,8 @@ Run `python train.py` and copy your own numbers here (also saved in `results/met
 
 | Model | Accuracy | Precision (spam) | Recall (spam) | F1 (spam) |
 |---|---|---|---|---|
-| Naive Bayes | _fill_ | _fill_ | _fill_ | _fill_ |
-| Logistic Regression | _fill_ | _fill_ | _fill_ | _fill_ |
+| Naive Bayes | 98.6 | 0.98 | 0.92 | 0.94 |
+| Logistic Regression | 98.3 | 0.90 | 0.97 | 0.93 |
 
 ## Project structure
 ```
